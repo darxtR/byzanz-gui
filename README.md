@@ -55,5 +55,5 @@ Light weight front end for byzanz (GIF screen recorder) with window and rectangl
 
 
     All other arguments is passed onto byzanz.
-
-    * Please take note of the -p/--path option. *
+    
+    * Please take note of the -p/--path and -m/--mode options. *
