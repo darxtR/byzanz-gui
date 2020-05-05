@@ -1,5 +1,6 @@
 # byzanz-gui
-Light weight front end for byzanz (GIF screen recorder) with window and rectanglular selection, written in bash for minimal systems and hot keys in mind.
+
+Light weight front end for byzanz (GIF screen recorder) with window and free hand rectangular selection, written in bash for minimal systems and hot keys in mind.
 
 Select window or rectangle or window to record, chosen with the --mode option, choose the duration and delay through popup prompts (or opt-out using predefined values) and be notified both of when the application starts to record and when it stops through notify-send.
 
@@ -31,7 +32,7 @@ Select window or rectangle or window to record, chosen with the --mode option, c
       -m, --select-mode=MODE  Predefine mode. Can by any of none, region and window.
       -n, --no-countdown      Disable notify-send countdown.
       -i, --invisible         Disable all notifications sent with notify-send.
-      -p, --path=PATH         Write directly to PATH and disable file selection.
+      -p, --path=PATH         Save to PATH (disables the file selection prompt).
       -q, --quiet             Use default values. Supress all input dialogs.
       -s, --silent            Supress sounds. This can also be achieved gloabally
                              with 'export BYZANZ_GUI_SILENT=true'.
