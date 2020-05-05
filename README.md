@@ -4,6 +4,8 @@ Light weight front end for byzanz (GIF screen recorder) with window and free han
 
 Select window or rectangle or window to record, chosen with the --mode option, choose the duration and delay through popup prompts (or opt-out using predefined values) and be notified both of when the application starts to record and when it stops through notify-send.
 
+Depends only on tools widely available through distribution repositories, namely (apart from byzanz) `xwininfo` (window mode), `xdotool` (region mode) and `notify-send` (notifications).
+
 
     [user@host ~]$ byzanz-gui --help
 
@@ -31,7 +33,7 @@ Select window or rectangle or window to record, chosen with the --mode option, c
       -f, --frame             Do not ignore frame during quick window select.
       -m, --select-mode=MODE  Predefine mode. Can by any of none, region and window.
       -n, --no-countdown      Disable notify-send countdown.
-      -i, --invisible         Disable all notifications sent with notify-send.
+      -i, --invisible         Disable visual notifications (notify-send).
       -p, --path=PATH         Save to PATH (disables the file selection prompt).
       -q, --quiet             Use default values. Supress all input dialogs.
       -s, --silent            Supress sounds. This can also be achieved gloabally
