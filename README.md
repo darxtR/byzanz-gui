@@ -14,11 +14,15 @@ Apart from the default full screen mode provided by byzanz this script provides 
 
 ### window
 
+`byzanz-gui -m window`
+
 After being prompted for duration(s), select the window you want to record.
 
 You will know when to select the window to record as the mouse pointer then takes the shape of a plus sign, '+'.
 
-### Region
+### Region (Rectangular free-hand)
+
+`byzanz-gui -m region`
 
 After being prompted for duration(s), click two times on the screen. Everything between these points will be recorded.
 
