@@ -6,7 +6,7 @@ Written in bash with minimal systems and hot keys in mind and depends only on to
 
 ## Installing
 
-Run with `bash ./byzanz-gui` or make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin` and run it from command line.
+Make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin` to run it anywhere from your command line anywhere, or simply run the file directly using `bash byzanz-gui`.
 
 ## Running
 
