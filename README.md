@@ -4,7 +4,27 @@ Lightweight front end for byzanz (GIF screen recorder) with three area selection
 
 Written in bash with minimal systems and hot keys in mind and depends only on tools widely available through distribution repositories. Namely `byzanz`, `xwininfo` (window mode), `xdotool` (region mode) and `notify-send` (notifications), most of which, apart from byzanz, usually comes pre-installed with systems running Xorg.
 
-Run with `bash ./byzanz-gui` or make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin`.
+## Running
+
+Run with `bash ./byzanz-gui` or make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin` and run it from command line.
+
+## Modes
+
+Apart from the default full screen mode provided by byzanz this script provides two more modes.
+
+### window
+
+After being prompted for duration(s), select the window you want to record.
+
+You will know when to select the window to record as the mouse pointer then takes the shape of a plus sign, '+'.
+
+### Region
+
+After being prompted for duration(s), click two times on the screen. Everything between these points will be recorded.
+
+You will know when to select the region to record as the mouse pointer then takes the shape of a plus sign, '+', up until the second point has been chosen.
+
+## Other
 
     [user@host ~]$ byzanz-gui --help
 
