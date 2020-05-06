@@ -8,7 +8,7 @@ Written in bash with minimal systems and hot keys in mind and depends only on to
 
 Run with `bash ./byzanz-gui` or make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin` and run it from command line.
 
-##### Modes
+#### Modes
 
 Apart from the default full screen mode provided by byzanz this script provides two more modes.
 
@@ -20,7 +20,7 @@ After being prompted for duration(s), select the window you want to record.
 
 You will know when to select the window to record as the mouse pointer then takes the shape of a plus sign, '+'.
 
-### Region (Rectangular free-hand)
+##### Region (Rectangular free-hand)
 
 `byzanz-gui -m region`
 
