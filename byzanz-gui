@@ -1,0 +1,515 @@
+#!/bin/bash
+#
+# AUTHOR      : darxtr 2019
+# NAME        : Byzanz-GUI
+# DESCRIPTION : Minimalistic front end to Byzanz, written in bash.
+# LICENSE     : BSD 0-Clause
+# DEPENDENCIES: byzanz,zenity,notify-send,xdotools,xwininfo,GNU grep v2.5+
+# OPTIONAL DEP: pulseaudio,paplay
+#
+# Front end for Byzans (GIF screen recorder) written in bash with minimal host
+# systems and hot keys in mind.
+
+set -e
+
+# Sound to play.
+ALERT=/usr/share/sounds/freedesktop/stereo/message-new-instant.oga
+
+# Delay before starting and duration to record.
+DEFAULT_DELAY=5
+DEFAULT_DURATION=10
+
+# Standard screencast folder
+DEFAULT_DIRECTORY=$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME")
+
+# Filename, date with prefix and sufix.
+DEFAULT_FILE_FMT="%%DATE%%_screencapture_%%PID%%"
+DEFAULT_DATE_FMT="%y%m%d-%H%M"
+
+##DEFAULT_FILENAME_PREFIX=""
+##DEFAULT_FILENAME_DATEFMT="%y%m%d-%H%M"
+##DEFAULT_FILENAME_SUFFIX="_Screencapture_$$"
+
+DEFAULT_EXT_AUDIO="flv" # lossless
+DEFAULT_EXT_SILENT="gif"
+DEFAULT_TMPDIR="/tmp"
+
+
+_play=$(which paplay 2>/dev/null || echo -n)
+
+# Sound notification to let one know when recording is about to start (and ends)
+alert () {
+    # Wait until end as user now may choose to record sound.
+    if [ -n "${_play}" ] && ! ${BYZANZ_GUI_SILENT:-false}; then
+        ${_play} ${alert}
+    fi
+}
+ 
+zenval () {
+    # Request user input with zenitys simple dialogs
+    zenity --entry --title "$1" --text "$2" --entry-text "$3" \
+        --width ${4:-200} --height ${5:-100} 2>/dev/null
+}
+
+notify () {
+    # Uniform notifications
+    ${BYZANZ_GUI_HIDDEN:-false} ||
+    notify-send -t $((${2:-1}*1000)) "Byzanz-GUI" "$1"
+}
+
+countdown ()
+{
+    # Visual countdown using notify-send that should remove any box within 1s.
+    n=${1:-3} # Count from N seconds
+    i=${2:-1} # Interval of I seconds.
+    # Notification timeout of T milliseconds. Keep alive until 1s fadeout.
+    while [ $n -gt $i ] ; do
+        notify "Starting in $n seconds..." $i
+        sleep $i
+        n=$((n-$i))
+    done
+    notify "Starting in $n seconds..." $n
+    sleep $n
+}
+
+select_window ()
+{
+    # Get geometry of a window selected by user.
+    # 
+    # Writes pixels as integers to stdout as:
+    #  x y width height
+
+    which xwininfo 2>/dev/null >&2 || {
+        echo "Missing dependency, 'xwininfo'."
+        exit 1
+    }
+
+    xwin=$(xwininfo) || exit 1 # User cancel
+    grep -Po "\W*Absolute upper-left X:\W*\K[0-9]+" <<<"${xwin}"
+    grep -Po "\W*Absolute upper-left Y:\W*\K[0-9]+" <<<"${xwin}"
+    grep -Po "\W*Width:\W*\K[0-9]+" <<<"${xwin}"
+    grep -Po "\W*Height:\W*\K[0-9]+" <<<"${xwin}"
+}
+
+select_region ()
+{
+    # Select region using mose.
+    #
+    # Writes pixels as integers to stdout as:
+    #  x y width height
+
+    which xdotool 2>/dev/null >&2 || {
+        echo "Missing dependency, 'xdotool'."
+        exit 1
+    }
+    
+    # user xwininfo to get cross cursor and disable clicks
+    xwininfo 2>/dev/null >&2
+    # get location at first click
+    read x y tail <<<$(xdotool getmouselocation --shell | tr -d "XY=")
+    # disable mouse again and get location at second click.
+    xwininfo 2>/dev/null >&2
+    read _x _y tail <<<$(xdotool getmouselocation --shell | tr -d "XY=")
+    
+    # Calculate width/height and set x/y to upper-left points.
+    [ $_x -gt $x ] && w=$(($_x-$x)) || { w=$(($x-$_x)); x=$_x; }
+    [ $_y -gt $y ] && h=$(($_y-$y)) || { h=$(($y-$_y)); y=$_y; }
+    
+    echo $x $y $w $h
+}
+
+byzanz_notify_init ()
+{
+    #  Notify user of duration and delay, then counts down from three seconds
+    # using notify-send unless $3/no_countowb is set to a true value.
+    # 
+    # :param $1: Delay, seconds as integer.
+    # :param $2: Duration, seconds as integer.
+    # :param $3: No countdown.
+    # :returns: Error codes from notify-send.
+    # No output.
+    
+    alert
+    delay="$1"
+    duration="$2"
+    countdown="${3:-true}"
+    # Post initial notification of both duration and delay, remove before start.
+
+    if [ ${delay} -eq 1 ] || ! ${countdown}; then
+        # One single notification for one second delays, and when countown has
+        # been disabled.
+        [ ${delay} -ge 3 ] && t=3 || t=${delay}
+        notify "Screen capture of ${duration}s will start in ${delay}s." "$t" ||
+            return $?
+        sleep 1
+
+    elif [ ${delay} -gt 1 ]; then
+
+        if [ ${delay} -le 3 ]; then
+            # Replace one 1s notification with the "full info notifiation".
+            notify "Screen capture of ${duration}s will start in ${delay}s." 1 ||
+                return $?
+            sleep 1
+            delay=$((${delay}-1))
+        else
+            #  Show full info for 3 seconds when possible without being visible at
+            # the time of capture.
+            notify "Screen capture of ${duration}s will start in ${delay}s." 3 ||
+                return $?
+            sleep $((${delay}-3))
+            delay=3
+        fi
+        countdown ${delay}
+    
+    fi
+}
+
+byzanz_notify_end ()
+{
+    # Replace one 1s notification with the "full info notifiation".
+    alert
+    if [ -n "${1}" ]; then
+        notify "Screen capture ended, file saved to '$1'."
+    fi
+}
+
+byzanz_save ()
+{
+    #  Request user input for saving file. Delete temporary file on user
+    # cancellation
+    #
+    # :param $1: Path to temporary file
+    # :param $2: Default path or filename.
+    # :returns: Error code on user cancellation
+    #
+    # No output
+    if ! path=$(zenity --file-selection --filename="$2" --save); then
+        rm "$1"; return 1
+    else
+        mv "$1" "${path}"
+    fi
+}
+
+
+# Front end for Byzanz written in bash with minimal host systems and hot keys in mind.
+#
+# Functionality:
+#  Select a region to record using mouse.
+#  Quick select region by clicking on a X window.
+#  Request user input using pop up dialogs.
+#  Visual countdown and/or sound before start of session.
+#  Specify default values to display in request dialogs at command line.
+#  Hide individual input request by predefining values at command line.
+#
+# Inherited functionality from byzanz:
+#  Record dekstop session as GIF, FLV, WEBM, OGG or OGV.
+#  Lossless encoding with using FLV.
+#  Record sound or cursor on demand.
+# 
+# Byzanz-GUI options
+#  -e, --temp-ext=EXT       Exension of temporary file. Normally defaults to ${DEFAULT_EXT_SILENT},
+#  -p, --path=PATH          Use PATH instead of asking.
+#  -q, --quiet              Do not request user input at all.
+#  -s, --silent             Supress sounds.
+#  -t, --temp-dir=DIR       Temporary directory.
+#                          ${DEFAULT_EXT_AUDIO} when -a or --audio has been specified.
+#
+#
+# All other options is passed onto byzanz-record
+#
+# Byzanz options:
+#  -d, --duration=SECS      Duration of animation (default: 10 seconds)
+#  --delay=SECS             Delay before start (default: 1 second)
+#  -c, --cursor             Record mouse cursor
+#  -a, --audio              Record audio
+#  -x, --x=PIXEL            X co-ordinate of rectangle to record
+#  -y, --y=PIXEL            Y co-ordinate of rectangle to record
+#  -w, --width=PIXEL        Width of recording rectangle
+#  -h, --height=PIXEL       Height of recording rectangle
+#  -v, --verbose            Be verbose
+#  --display=DISPLAY        X display to use
+
+usage ()
+{
+    echo "usage: $(basename $0) [-t <dir>] [-e <byzanz|flv|gif|ogg|ogv|webm>]"\
+        "[-p <path>]" >&2
+}
+
+_help ()
+{
+    usage; echo; cat - >&2 <<EOF
+Options inherited directly from byzanz-record:
+  -a, --audio               Record audio.
+  -c, --cursor              Record cursor.
+  -d, --duration            Predefined duration. Disables input request dialog.
+      --delay               Predefined delay. Disables input request dialog.
+  -x, --x=PIXEL             Predefined region, X. Upper most left, as pixels.
+  -y, --y=PIXEL             Predefined region, Y. Upper most left, as pixels.
+  -w, --width=PIXEL         Predefined region, width as pixels.
+  -h, --height=PIXEL        Predefined region, height as pixels.
+
+Application options
+  -b, --byzanz-record=PATH  Path to byzanz executable, or name found in \$PATH.
+      --default-delay       Default delay. Displayed in dialogs.
+      --default-duration    Default duration. Displayed in dialogs.
+      --default-directory   Default directory. Displayed in dialogs.
+      --date-fmt=FMT        Use this time format to generate the filename.
+  -e, --file-ext=EXT        Default and temporary file extension. Defaults to
+                           $(
+               if [ "${DEFAULT_EXT_SILENT}" == "${DEFAULT_EXT_AUDIO}" ]; then
+                   echo -n "${DEFAULT_EXT_AUDIO}."
+               else
+                   echo -n "${DEFAULT_EXT_AUDIO} when audio is being recorded,"\
+                           "otherwise ${DEFAULT_EXT_SILENT}."
+               fi)
+      --file-fmt=NAME     File name format (default=${DEFAULT_FILENAME_FMT})
+  -f, --frame             Do not ignore frame during quick window select.
+  -m, --select-mode=MODE  Predefine mode. Can by any of none, region and window.
+  -n, --no-countdown      Disable notify-send countdown.
+  -i, --invisible         Disable visual notifications (notify-send).
+  -p, --path=PATH         Save to PATH (disables the file selection prompt).
+  -q, --quiet             Use default values. Supress all input dialogs.
+  -s, --silent            Supress sounds. This can also be achieved gloabally
+                         with 'export BYZANZ_GUI_SILENT=true'.
+  -t, --temp-dir=DIR   Temporary directory.
+
+  -h, --help              Show this help message.
+  -u, --usage             Show usage string.
+
+EXT
+    byzanz
+    flv
+    gif
+    ogg
+    ogv
+
+MODE
+    none        Record full screen.
+    window      Quick select region by clicking a X window.
+    region      Quick select a custm region with two mouse clicks.
+
+NAME
+    %%PID%%     Replaced with PID of byzanz-gui.
+    %%DATE%%    Replaced with date of byzanz-gui execution.
+    
+
+All other arguments is passed onto byzanz.
+
+* Please take note of the -p/--path and -m/--mode options. *
+EOF
+}
+
+
+# Remember if a path is specified or if temp file have to be used
+
+# Variables to keep specified options/arguments
+#
+#  Booleans, generally set by flagging options.
+_path=false # Remember if a specific path has been defined.
+_audio=false
+_count=true
+_hide=false
+_frame=false
+_quiet=false
+#  Optional values
+selmode=
+byzanz=byzanz-record
+ext=
+dir="${DEFAULT_TMPDIR}"
+path=
+defdur=
+defdel=
+defdir=${DEFAULT_DIRECTORY}
+date_fmt=
+file_fmt=
+
+parse_args () {
+    
+    while [ $# -gt 0 ]; do case "$1" in
+	
+            --help) _help; exit 0;;
+        -u|--usage) usage; exit 0;;
+        
+        # Option flags (that is handled in any way).
+        -f|--frame       ) _frame=true;;
+        -q|--quiet       ) _quiet=true;;
+        -s|--silent      ) BYZANZ_GUI_SILENT=true;;
+        -a|--audio       ) _audio=true;;
+        -i|--invisble    ) BYZANZ_GUI_HIDDEN=true;;
+        -n|--no-countdown) _count=false;;
+        
+        # Predefined region
+        -x) x="$2"; shift 2;; --x=.*     ) IFS== read _o x <<<"$1"; shift;;
+        -y) y="$2"; shift 2;; --y=.*     ) IFS== read _o y <<<"$1"; shift;;
+        -w) w="$2"; shift 2;; --width=.* ) IFS== read _o w <<<"$1"; shift;;
+        -h) h="$2"; shift 2;; --height=.*) IFS== read _o h <<<"$1"; shift;;
+        
+        
+        --byzanz-record=.*)
+            IFS== read _o byzanz <<<"${1}"; shift; continue
+        ;;
+        -b) 
+            byzanz="$2"; shift 2; continue
+        ;;
+        
+        --temp-dir=.*)
+            IFS== read _o tmpdir <<<"${1}"; shift; continue
+        ;;
+        -t)
+            tmpdir=$2; shift 2; continue
+        ;;
+
+        
+        --file-ext=.*) # Temporary/default file extension
+            IFS== read _o ext <<<"$1"; shift; continue
+        ;;
+        -e) 
+            ext="$2"; shift 2; continue
+        ;;
+
+        --path=.*)
+            _path=true; IFS== read _o path <<<"$1"; shift; continue
+        ;;
+        -p)
+            # Remeber if temporary file is being used.
+            _path=true; path="$2"; shift 2; continue
+        ;;
+         
+        --delay=*)
+            IFS== read _o delay <<<"$1"; shift 1; continue
+        ;;
+        
+        --duration=*)
+            IFS== read _o duration <<<"$1"; shift 1; continue
+        ;;
+        -d)
+            duration="$2"; shift 2; continue
+        ;;
+        
+        --select-mode=.*)
+            IFS== read _o selmode <<<"$1"; shift; continue
+        ;;
+        -m)
+            selmode="$2"; shift 2; continue
+        ;;
+         
+        --date-fmt=.*) IFS== read _o date_fmt <<<"$1"; shift; continue;;
+        --file-fmt=.*) IFS== read _o file_fmt <<<"$1"; shift; continue;;
+
+        --default-delay=.*    ) IFS== read _o defdel <<<"$1"; shift; continue;;
+        --default-directory=.*) IFS== read _o defdir <<<"$1"; shift; continue;;
+        --default-duration=.* ) IFS== read _o defdur <<<"$1"; shift; continue;;
+    esac
+    args=("${args[@]}" "$1")
+    shift
+done || true
+}
+
+parse_args "$@"
+
+# Define path needed by byzanz-record before execution.
+if [ -z ${path} ]; then
+    # Format defined at command line or constant.
+    [ -z "${ext}" ] && { $_audio && ext=${DEFAULT_EXT_AUDIO} ||
+                                    ext=${DEFAULT_EXT_SILENT}; }
+    defname=$(
+        echo -n "${file_fmt:-${DEFAULT_FILE_FMT}}.${ext}" |
+        sed "s/%%PID%%/$$/g" |
+        sed "s/%%DATE%%/$(date +${date_fmt:-${DEFAULT_DATE_FMT}})/g"
+    )
+    if ${_path} || ${_quiet}; then
+        #  Skip file selection in quiet mode and/or when a empty string is
+        # specified as path on command line.
+        path="${defdir}/${defname}"
+    else
+        # File selection dialog will be shown, defaults to /tmp (generally disk)
+        path="${tmpdir:-${DEFAULT_TMPDIR}}/${defname}"
+    fi
+fi
+
+args=( "${args[@]}" "${path}" )
+   
+[ -z ${defdir} ] || { [ ${defdir:: -1} == / ] || defdir="${defdir}/"; }
+
+# Get user input using zenity. Do not ask in quiet mode or when a value have been
+# specified at command line.
+#
+# Request user input, unless quiet mode has been specifid or if any of these
+# values has been specified on command line.
+
+! ${_quiet} && [ -z "${duration}" ] && {
+    duration=$(zenval "Screencast duration." "Duration:" ${DEFAULT_DURATION}) \
+        || exit 1 # User cancellation
+}
+[ -n "${duration}" ] || duration=${defdur:=${DEFAULT_DURATION}}
+[ -z "${duration}" ] || args=(${args[@]} "--duration=${duration}")
+
+# Do not pass on delay as a argument to byzanz-record. (This script handles both
+# delay and countdown)
+! ${_quiet} && [ -z "${delay}" ] && {
+    delay=$(zenval "Delay before screencast." "Delay:" ${DEFAULT_DELAY}) \
+        || exit 1 # User cancellation
+}
+[ -n "${delay}" ] || delay=${defdel:-${DEFAULT_DELAY}}
+
+# "If no redefined region has been specified"
+if ! ${_quiet} && [ -z "$x" -a -z "$y" -a -z "$w" -a -z "$h" ]; then
+    
+    # Select region to capture. Defaults to full screen.
+    case "${selmode}" in
+        # exit 1 on user cancellation
+        
+	window)
+	    echo '*** Select window ***'>&2
+	    read x y w h <<<$(select_window) || exit 1
+        ;;
+        
+        region)
+	    echo '*** Select region ***'>&2
+            read x y w h <<<$(select_region) || exit 1
+        ;;
+        
+        ""|fs|none|full|fullscreen)
+            :
+        ;;
+        
+        *)
+            help
+            echo "ERROR: Invalid selection mode, '${selmode}'.">&2
+            exit 1
+        ;;
+        # [ -z ${selmode} ] == Full screen
+    esac
+    args=(${args[@]} -x $x -y $y -w $w -h $h)
+else
+    [ -n "$x" ] && args=(${args[@]} -x $x)
+    [ -n "$y" ] && args=(${args[@]} -y $y)
+    [ -n "$w" ] && args=(${args[@]} -w $w)
+    [ -n "$h" ] && args=(${args[@]} -h $h)
+fi
+
+#
+# Run application
+#
+
+
+#  Notify user with notifiations and audio, including countdown and wait for the
+# delay to pass.
+
+byzanz_notify_init "${delay}" "${duration}" "${_count}"
+
+# Initiate screencast/recording
+${byzanz} --verbose --delay=0 --duration=${duration} "${args[@]}" # || {
+##     || {
+##        rm "$_tmp" >&2 2>/dev/null
+##        byzanz_notify_cancel "${path}"
+##        exit 1
+##    }
+#  NOTE: No error codes from byzanz. Detection of cancellation not possible.
+# Some other default format than GIF might be better suited because of this.
+
+# Notify user that the recording has ended.
+byzanz_notify_end $(${_path} && echo "${path}")
+
+# Save file
+! "${_path}" && { byzanz_save "${path}" "${defdir}${defname}" ; } || exit $?
