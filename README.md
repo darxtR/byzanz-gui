@@ -8,11 +8,11 @@ Written in bash with minimal systems and hot keys in mind and depends only on to
 
 Run with `bash ./byzanz-gui` or make the file executable and install it to a folder in your PATH, like `$HOME/.local/bin` or `/usr/local/bin` and run it from command line.
 
-###### Modes
+##### Modes
 
 Apart from the default full screen mode provided by byzanz this script provides two more modes.
 
-###### window
+##### window
 
 `byzanz-gui -m window`
 
