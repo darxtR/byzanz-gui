@@ -2,7 +2,7 @@
 
 Lightweight front end for byzanz (GIF screen recorder) with three area selections modes (full screen, window and region), optional popup input prompts (duration/delay) and notifications issued both when the application starts and stops to record.
 
-Written in bash with minimal systems and hot keys in mind and depends only on tools widely available through distribution repositories. Namely `byzanz`, `x11-utils` (select window), `xdotool` (select region), `zenity` (prompts) and `libnotify` (notifications) that, apart from byzanz, ships with various desktop environments.
+Written in bash with minimal systems and hot keys in mind and depends only on tools widely available through distribution repositories, namely `byzanz`, `x11-utils` (select window), `xdotool` (select region), `zenity` (prompts) and `libnotify` (notifications).
 
 ## Installing
 
